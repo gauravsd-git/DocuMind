@@ -171,8 +171,27 @@ public class DocumentServiceImpl implements DocumentService {
             // This vector represents the semantic meaning of
             // the chunk and will later allow similarity search.
             //
-            float[] embedding =
-                    embeddingService.generateEmbedding(chunkText);
+
+            float[] embedding;
+
+            try {
+
+                embedding =
+                        embeddingService.generateEmbedding(chunkText);
+
+            } catch (RuntimeException exception) {
+
+                log.error(
+                        "Failed to generate embedding for chunk {} of document {} after retry attempts",
+                        i,
+                        savedDocument.getId(),
+                        exception
+                );
+
+                throw new InvalidDocumentException(
+                        "Unable to generate embedding for the uploaded document."
+                );
+            }
 
 
             // -----------------------------------------------------
@@ -228,6 +247,7 @@ public class DocumentServiceImpl implements DocumentService {
                 documentChunks.size(),
                 savedDocument.getId()
         );
+
 
         // Processing completed successfully.
         savedDocument.setStatus(DocumentStatus.COMPLETED);
