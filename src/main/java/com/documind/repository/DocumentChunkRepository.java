@@ -11,12 +11,16 @@ public interface DocumentChunkRepository
         extends JpaRepository<DocumentChunk, Long> {
 
     @Query(value = """
-            SELECT *
-            FROM document_chunks
-            ORDER BY embedding <=> CAST(:embedding AS vector)
+            SELECT dc.*
+            FROM document_chunks dc
+            JOIN documents d
+                ON d.id = dc.document_id
+            WHERE d.user_id = :userId
+            ORDER BY dc.embedding <=> CAST(:embedding AS vector)
             LIMIT :topK
             """, nativeQuery = true)
     List<DocumentChunk> findSimilarChunks(
+            @Param("userId") Long userId,
             @Param("embedding") String embedding,
             @Param("topK") int topK
     );

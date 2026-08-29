@@ -1,4 +1,10 @@
 package com.documind.service;
 
-public class QueryService {
+import com.documind.dto.QueryResponse;
+
+public interface QueryService {
+
+    QueryResponse query(
+            Long aLong, String question
+    );
 }

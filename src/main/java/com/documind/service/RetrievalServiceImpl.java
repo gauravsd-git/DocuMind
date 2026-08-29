@@ -16,9 +16,15 @@ public class RetrievalServiceImpl implements RetrievalService {
 
     @Override
     public List<DocumentChunk> retrieve(
-            String query,
+            Long userId, String query,
             int topK
     ) {
+
+        if (userId == null) {
+            throw new IllegalArgumentException(
+                    "User id must not be null."
+            );
+        }
 
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException(
@@ -40,8 +46,9 @@ public class RetrievalServiceImpl implements RetrievalService {
         String vector =
                 toPgVector(queryEmbedding);
 
-        // 3. Ask pgvector for the most similar chunks.
+        // 3. Search only chunks belonging to this user.
         return documentChunkRepository.findSimilarChunks(
+                userId,
                 vector,
                 topK
         );

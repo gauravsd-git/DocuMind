@@ -1,4 +1,6 @@
 package com.documind.dto;
 
-public class QueryResponse {
+public record QueryResponse(
+        String answer
+) {
 }

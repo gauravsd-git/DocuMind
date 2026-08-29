@@ -129,6 +129,16 @@
 			<artifactId>spring-ai-starter-model-google-genai-embedding</artifactId>
 		</dependency>
 
+		<!--
+   			Spring AI Google GenAI Chat
+   			Provides Spring AI's ChatModel implementation
+   			backed by Google's Gemini generative AI API.
+		-->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-google-genai</artifactId>
+		</dependency>
+
 		<dependency>
 			<groupId>com.pgvector</groupId>
 			<artifactId>pgvector</artifactId>

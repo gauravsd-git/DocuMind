@@ -1,4 +1,7 @@
 package com.documind.dto;
 
-public class QueryRequest {
+public record QueryRequest(
+        Long userId,
+        String question
+) {
 }
