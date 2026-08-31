@@ -1,6 +1,7 @@
 package com.documind.service;
 
 import com.documind.dto.QueryResponse;
+import com.documind.dto.QuerySource;
 import com.documind.entity.DocumentChunk;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -11,14 +12,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class QueryServiceImpl implements QueryService {
 
-    private static final int DEFAULT_TOP_K = 5;
+    private static final int DEFAULT_TOP_K = 3;
 
     private final RetrievalService retrievalService;
     private final GenerationService generationService;
 
     @Override
     public QueryResponse query(
-            Long userId, String question
+            Long userId,
+            String question
     ) {
 
         if (userId == null) {
@@ -33,7 +35,8 @@ public class QueryServiceImpl implements QueryService {
             );
         }
 
-        // Retrieve relevant chunks belonging ONLY to this user.
+        // Retrieve the most relevant chunks belonging
+        // only to the requested user.
         List<DocumentChunk> relevantChunks =
                 retrievalService.retrieve(
                         userId,
@@ -41,13 +44,29 @@ public class QueryServiceImpl implements QueryService {
                         DEFAULT_TOP_K
                 );
 
-        // Generate an answer using only the retrieved context.
+        // Generate an answer using only the retrieved chunks.
         String answer =
                 generationService.generateAnswer(
                         question,
                         relevantChunks
                 );
 
-        return new QueryResponse(answer);
+        /*
+         * Convert retrieved chunks into citation information.
+         */
+        List<QuerySource> sources =
+                relevantChunks.stream()
+                        .map(chunk -> new QuerySource(
+                                chunk.getDocument().getId(),
+                                chunk.getDocument().getFilename(),
+                                chunk.getChunkIndex()
+                        ))
+                        .distinct()
+                        .toList();
+
+        return new QueryResponse(
+                answer,
+                sources
+        );
     }
 }

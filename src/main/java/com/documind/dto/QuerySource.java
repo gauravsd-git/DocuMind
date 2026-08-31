@@ -1,4 +1,8 @@
 package com.documind.dto;
 
-public class QuerySource {
+public record QuerySource(
+        Long documentId,
+        String filename,
+        Integer chunkIndex
+) {
 }
