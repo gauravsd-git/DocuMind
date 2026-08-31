@@ -13,6 +13,7 @@ import com.documind.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.tika.exception.TikaException;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -48,6 +49,10 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     @Transactional
+    @CacheEvict(
+            value = "queryResponses",
+            allEntries = true
+    )
     public DocumentUploadResponse upload(
             MultipartFile file,
             Long userId

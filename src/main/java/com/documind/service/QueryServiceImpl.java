@@ -4,6 +4,7 @@ import com.documind.dto.QueryResponse;
 import com.documind.dto.QuerySource;
 import com.documind.entity.DocumentChunk;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -18,6 +19,10 @@ public class QueryServiceImpl implements QueryService {
     private final GenerationService generationService;
 
     @Override
+    @Cacheable(
+            value = "queryResponses",
+            key = "#userId + ':' + #question.trim().toLowerCase()"
+    )
     public QueryResponse query(
             Long userId,
             String question
