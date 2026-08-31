@@ -3,5 +3,13 @@ package com.documind.repository;
 import com.documind.entity.Document;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface DocumentRepository extends JpaRepository<Document, Long> {
+import java.util.Optional;
+
+public interface DocumentRepository
+        extends JpaRepository<Document, Long> {
+
+    Optional<Document> findByUserIdAndDocumentHash(
+            Long userId,
+            String documentHash
+    );
 }

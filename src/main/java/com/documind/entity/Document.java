@@ -8,7 +8,15 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "documents")
+@Table(
+        name = "documents",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_user_document_hash",
+                        columnNames = {"user_id", "document_hash"}
+                )
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -31,4 +39,14 @@ public class Document {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private DocumentStatus status;
+
+    /*
+     * SHA-256 hash of the uploaded PDF.
+     */
+    @Column(
+            name = "document_hash",
+            nullable = false,
+            length = 64
+    )
+    private String documentHash;
 }

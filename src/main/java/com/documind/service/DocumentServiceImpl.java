@@ -18,8 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 
 @Service
@@ -36,7 +39,7 @@ public class DocumentServiceImpl implements DocumentService {
     // Splits the extracted text into smaller chunks.
     private final DocumentChunkingService documentChunkingService;
 
-    // Repository used to store the generated document chunks.
+    // Repository used to store generated document chunks.
     private final DocumentChunkRepository documentChunkRepository;
 
     // Generates a Gemini embedding for each chunk.
@@ -68,7 +71,59 @@ public class DocumentServiceImpl implements DocumentService {
 
 
         // ---------------------------------------------------------
-        // STEP 3: Extract raw text from the PDF using Apache Tika.
+        // STEP 3: Calculate SHA-256 hash of the PDF.
+        // ---------------------------------------------------------
+        String documentHash;
+
+        try {
+
+            documentHash = calculateSha256(file);
+
+            log.info(
+                    "Calculated SHA-256 hash for {}: {}",
+                    file.getOriginalFilename(),
+                    documentHash
+            );
+
+        } catch (IOException exception) {
+
+            log.error(
+                    "Failed to read PDF while calculating hash: {}",
+                    file.getOriginalFilename(),
+                    exception
+            );
+
+            throw new InvalidDocumentException(
+                    "Unable to process the uploaded PDF."
+            );
+        }
+
+
+        // ---------------------------------------------------------
+        // STEP 4: Check whether this user already uploaded
+        // the exact same document.
+        // ---------------------------------------------------------
+        if (documentRepository
+                .findByUserIdAndDocumentHash(
+                        userId,
+                        documentHash
+                )
+                .isPresent()) {
+
+            log.warn(
+                    "Duplicate document upload rejected for user {}: {}",
+                    userId,
+                    file.getOriginalFilename()
+            );
+
+            throw new InvalidDocumentException(
+                    "This document has already been uploaded."
+            );
+        }
+
+
+        // ---------------------------------------------------------
+        // STEP 5: Extract raw text from the PDF using Apache Tika.
         // ---------------------------------------------------------
         String extractedText;
 
@@ -89,7 +144,6 @@ public class DocumentServiceImpl implements DocumentService {
 
         } catch (IOException exception) {
 
-            // The PDF could not be read.
             log.error(
                     "Failed to read PDF: {}",
                     file.getOriginalFilename(),
@@ -102,7 +156,6 @@ public class DocumentServiceImpl implements DocumentService {
 
         } catch (TikaException exception) {
 
-            // Apache Tika could not parse the PDF.
             log.error(
                     "Failed to parse PDF with Apache Tika: {}",
                     file.getOriginalFilename(),
@@ -116,7 +169,7 @@ public class DocumentServiceImpl implements DocumentService {
 
 
         // ---------------------------------------------------------
-        // STEP 4: Divide the extracted text into chunks.
+        // STEP 6: Divide the extracted text into chunks.
         // ---------------------------------------------------------
         List<String> chunks =
                 documentChunkingService.chunk(extractedText);
@@ -129,16 +182,15 @@ public class DocumentServiceImpl implements DocumentService {
 
 
         // ---------------------------------------------------------
-        // STEP 5: Create the Document entity.
+        // STEP 7: Create the Document entity.
         // ---------------------------------------------------------
         Document document = new Document();
 
         document.setUser(user);
         document.setFilename(file.getOriginalFilename());
         document.setUploadDate(LocalDateTime.now());
-
-        // The document is still being processed.
         document.setStatus(DocumentStatus.PROCESSING);
+        document.setDocumentHash(documentHash);
 
 
         // Save the parent document first.
@@ -147,7 +199,7 @@ public class DocumentServiceImpl implements DocumentService {
 
 
         // ---------------------------------------------------------
-        // STEP 6: Create DocumentChunk entities.
+        // STEP 8: Create DocumentChunk entities.
         // ---------------------------------------------------------
         List<DocumentChunk> documentChunks =
                 new ArrayList<>();
@@ -155,23 +207,12 @@ public class DocumentServiceImpl implements DocumentService {
 
         for (int i = 0; i < chunks.size(); i++) {
 
-            // Get the current chunk's text.
             String chunkText = chunks.get(i);
 
 
             // -----------------------------------------------------
-            // STEP 7: Generate Gemini embedding for this chunk.
+            // STEP 9: Generate Gemini embedding for this chunk.
             // -----------------------------------------------------
-            //
-            // Gemini converts the chunk's text into a numerical
-            // vector. In our current configuration this is:
-            //
-            //       float[3072]
-            //
-            // This vector represents the semantic meaning of
-            // the chunk and will later allow similarity search.
-            //
-
             float[] embedding;
 
             try {
@@ -195,25 +236,16 @@ public class DocumentServiceImpl implements DocumentService {
 
 
             // -----------------------------------------------------
-            // STEP 8: Create the DocumentChunk entity.
+            // STEP 10: Create DocumentChunk entity.
             // -----------------------------------------------------
             DocumentChunk documentChunk =
                     new DocumentChunk();
 
-            // Associate the chunk with its parent document.
             documentChunk.setDocument(savedDocument);
-
-            // Store the chunk's position in the document.
             documentChunk.setChunkIndex(i);
-
-            // Store the original chunk text.
             documentChunk.setContent(chunkText);
-
-            // Store Gemini's vector embedding.
             documentChunk.setEmbedding(embedding);
 
-
-            // Add the completed chunk to the list.
             documentChunks.add(documentChunk);
 
 
@@ -226,20 +258,8 @@ public class DocumentServiceImpl implements DocumentService {
 
 
         // ---------------------------------------------------------
-        // STEP 9: Persist chunks + embeddings in PostgreSQL.
+        // STEP 11: Persist chunks + embeddings.
         // ---------------------------------------------------------
-        //
-        // Each DocumentChunk now contains:
-        //
-        //   document
-        //   chunkIndex
-        //   content
-        //   embedding
-        //
-        // PostgreSQL stores the embedding as:
-        //
-        //   vector(3072)
-        //
         documentChunkRepository.saveAll(documentChunks);
 
         log.info(
@@ -249,8 +269,11 @@ public class DocumentServiceImpl implements DocumentService {
         );
 
 
-        // Processing completed successfully.
+        // ---------------------------------------------------------
+        // STEP 12: Mark document as completed.
+        // ---------------------------------------------------------
         savedDocument.setStatus(DocumentStatus.COMPLETED);
+
         documentRepository.save(savedDocument);
 
         log.info(
@@ -260,7 +283,7 @@ public class DocumentServiceImpl implements DocumentService {
 
 
         // ---------------------------------------------------------
-        // STEP 10: Return the upload response.
+        // STEP 13: Return upload response.
         // ---------------------------------------------------------
         return new DocumentUploadResponse(
                 savedDocument.getId(),
@@ -271,10 +294,40 @@ public class DocumentServiceImpl implements DocumentService {
 
 
     // -------------------------------------------------------------
+    // Calculates SHA-256 hash of the uploaded PDF.
+    // -------------------------------------------------------------
+    private String calculateSha256(
+            MultipartFile file
+    ) throws IOException {
+
+        try {
+
+            MessageDigest digest =
+                    MessageDigest.getInstance("SHA-256");
+
+            byte[] hash =
+                    digest.digest(file.getBytes());
+
+            return HexFormat.of().formatHex(hash);
+
+        } catch (NoSuchAlgorithmException exception) {
+
+            // SHA-256 is guaranteed to exist in standard Java.
+            throw new IllegalStateException(
+                    "SHA-256 algorithm is not available.",
+                    exception
+            );
+        }
+    }
+
+
+    // -------------------------------------------------------------
     // Validates that the uploaded file exists, is not empty,
     // and has a PDF content type.
     // -------------------------------------------------------------
-    private void validatePdf(MultipartFile file) {
+    private void validatePdf(
+            MultipartFile file
+    ) {
 
         if (file == null || file.isEmpty()) {
 
