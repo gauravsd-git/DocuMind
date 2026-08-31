@@ -10,15 +10,6 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class EmbeddingServiceImpl implements EmbeddingService {
 
-    /*
-     * Spring AI provides the EmbeddingModel abstraction.
-     *
-     * Spring AI connects this abstraction to Google's
-     * Gemini embedding model.
-     *
-     * Spring AI also provides retry handling for
-     * transient AI/API failures.
-     */
     private final EmbeddingModel embeddingModel;
 
     @Override
@@ -54,13 +45,6 @@ public class EmbeddingServiceImpl implements EmbeddingService {
 
         } catch (RuntimeException exception) {
 
-            /*
-             * Spring AI has already performed its configured
-             * retry attempts for retryable transient failures.
-             *
-             * If execution reaches this block, the embedding
-             * operation ultimately failed.
-             */
             log.error(
                     "Embedding generation failed after API/retry processing",
                     exception
