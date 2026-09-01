@@ -5,6 +5,7 @@ import com.documind.dto.QueryResponse;
 public interface QueryService {
 
     QueryResponse query(
-            Long aLong, String question
+            Long userId,
+            String question
     );
 }

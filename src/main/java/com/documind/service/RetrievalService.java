@@ -7,7 +7,8 @@ import java.util.List;
 public interface RetrievalService {
 
     List<DocumentChunk> retrieve(
-            Long userId, String query,
+            Long userId,
+            String query,
             int topK
     );
 }

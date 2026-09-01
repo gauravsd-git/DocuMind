@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -27,16 +28,16 @@ public class DocumentController {
     @Operation(
             summary = "Upload a PDF document",
             description = """
-                    Uploads a PDF document for a user.
+                    Uploads a PDF document for the authenticated user.
 
-                    The uploaded PDF goes through the following ingestion pipeline:
+                    The uploaded PDF goes through:
                     1. PDF file validation
                     2. Text extraction using Apache Tika
                     3. Text chunking with overlapping chunks
-                    4. Storage of document metadata
-                    5. Storage of generated document chunks
-
-                    Embeddings are not generated at this stage.
+                    4. Document metadata storage
+                    5. Document chunk storage
+                    6. Gemini embedding generation
+                    7. pgvector storage
                     """
     )
     @ApiResponses({
@@ -59,14 +60,19 @@ public class DocumentController {
     )
     public ResponseEntity<DocumentUploadResponse> upload(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("userId") Long userId
+            Authentication authentication
     ) {
 
-        // Delegate document processing to the service layer.
-        DocumentUploadResponse response =
-                documentService.upload(file, userId);
+        // Get the user ID from the authenticated JWT.
+        Long userId =
+                (Long) authentication.getPrincipal();
 
-        // Return HTTP 201 Created with the document details.
+        DocumentUploadResponse response =
+                documentService.upload(
+                        file,
+                        userId
+                );
+
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(response);

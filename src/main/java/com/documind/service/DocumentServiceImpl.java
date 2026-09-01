@@ -29,21 +29,14 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class DocumentServiceImpl implements DocumentService {
+public class DocumentServiceImpl
+        implements DocumentService {
 
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
-
-    // Extracts raw text from the uploaded PDF.
     private final TikaTextExtractionService tikaTextExtractionService;
-
-    // Splits the extracted text into smaller chunks.
     private final DocumentChunkingService documentChunkingService;
-
-    // Repository used to store generated document chunks.
     private final DocumentChunkRepository documentChunkRepository;
-
-    // Generates a Gemini embedding for each chunk.
     private final EmbeddingService embeddingService;
 
 
@@ -58,34 +51,40 @@ public class DocumentServiceImpl implements DocumentService {
             Long userId
     ) {
 
-        // ---------------------------------------------------------
-        // STEP 1: Validate the uploaded file.
-        // ---------------------------------------------------------
+        // =========================================================
+        // STEP 1: Validate PDF.
+        // =========================================================
+
         validatePdf(file);
 
 
-        // ---------------------------------------------------------
-        // STEP 2: Verify that the user exists.
-        // ---------------------------------------------------------
-        User user = userRepository.findById(userId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "User not found with id: " + userId
-                        )
-                );
+        // =========================================================
+        // STEP 2: Find authenticated user.
+        // =========================================================
+
+        User user =
+                userRepository.findById(userId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "User not found with id: "
+                                                + userId
+                                )
+                        );
 
 
-        // ---------------------------------------------------------
-        // STEP 3: Calculate SHA-256 hash of the PDF.
-        // ---------------------------------------------------------
+        // =========================================================
+        // STEP 3: Calculate SHA-256.
+        // =========================================================
+
         String documentHash;
 
         try {
 
-            documentHash = calculateSha256(file);
+            documentHash =
+                    calculateSha256(file);
 
             log.info(
-                    "Calculated SHA-256 hash for {}: {}",
+                    "SHA-256 for {} = {}",
                     file.getOriginalFilename(),
                     documentHash
             );
@@ -93,8 +92,7 @@ public class DocumentServiceImpl implements DocumentService {
         } catch (IOException exception) {
 
             log.error(
-                    "Failed to read PDF while calculating hash: {}",
-                    file.getOriginalFilename(),
+                    "Failed to calculate SHA-256",
                     exception
             );
 
@@ -104,10 +102,10 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
 
-        // ---------------------------------------------------------
-        // STEP 4: Check whether this user already uploaded
-        // the exact same document.
-        // ---------------------------------------------------------
+        // =========================================================
+        // STEP 4: Reject duplicate for same user.
+        // =========================================================
+
         if (documentRepository
                 .findByUserIdAndDocumentHash(
                         userId,
@@ -115,43 +113,29 @@ public class DocumentServiceImpl implements DocumentService {
                 )
                 .isPresent()) {
 
-            log.warn(
-                    "Duplicate document upload rejected for user {}: {}",
-                    userId,
-                    file.getOriginalFilename()
-            );
-
             throw new InvalidDocumentException(
                     "This document has already been uploaded."
             );
         }
 
 
-        // ---------------------------------------------------------
-        // STEP 5: Extract raw text from the PDF using Apache Tika.
-        // ---------------------------------------------------------
+        // =========================================================
+        // STEP 5: Extract PDF text using Apache Tika.
+        // =========================================================
+
         String extractedText;
 
         try {
 
             extractedText =
-                    tikaTextExtractionService.extractText(file);
-
-            log.info(
-                    "Successfully extracted {} characters from PDF: {} | blank={} | text=[{}]",
-                    extractedText.length(),
-                    file.getOriginalFilename(),
-                    extractedText.isBlank(),
-                    extractedText.replace("\n", "\\n")
-                            .replace("\r", "\\r")
-                            .replace("\t", "\\t")
-            );
+                    tikaTextExtractionService.extractText(
+                            file
+                    );
 
         } catch (IOException exception) {
 
             log.error(
-                    "Failed to read PDF: {}",
-                    file.getOriginalFilename(),
+                    "Failed to read PDF",
                     exception
             );
 
@@ -162,8 +146,7 @@ public class DocumentServiceImpl implements DocumentService {
         } catch (TikaException exception) {
 
             log.error(
-                    "Failed to parse PDF with Apache Tika: {}",
-                    file.getOriginalFilename(),
+                    "Failed to extract PDF text",
                     exception
             );
 
@@ -173,64 +156,89 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
 
-        // ---------------------------------------------------------
-        // STEP 6: Divide the extracted text into chunks.
-        // ---------------------------------------------------------
+        // =========================================================
+        // STEP 6: Make chunks.
+        // =========================================================
+
         List<String> chunks =
-                documentChunkingService.chunk(extractedText);
+                documentChunkingService.chunk(
+                        extractedText
+                );
+
+
+        if (chunks.isEmpty()) {
+
+            throw new InvalidDocumentException(
+                    "No readable text was found in the PDF."
+            );
+        }
+
 
         log.info(
-                "Created {} text chunks from PDF: {}",
-                chunks.size(),
-                file.getOriginalFilename()
+                "Created {} chunks",
+                chunks.size()
         );
 
 
-        // ---------------------------------------------------------
-        // STEP 7: Create the Document entity.
-        // ---------------------------------------------------------
-        Document document = new Document();
+        // =========================================================
+        // STEP 7: Create Document entity.
+        // =========================================================
+
+        Document document =
+                new Document();
 
         document.setUser(user);
-        document.setFilename(file.getOriginalFilename());
-        document.setUploadDate(LocalDateTime.now());
-        document.setStatus(DocumentStatus.PROCESSING);
-        document.setDocumentHash(documentHash);
+        document.setFilename(
+                file.getOriginalFilename()
+        );
+        document.setUploadDate(
+                LocalDateTime.now()
+        );
+        document.setStatus(
+                DocumentStatus.PROCESSING
+        );
+        document.setDocumentHash(
+                documentHash
+        );
 
 
-        // Save the parent document first.
         Document savedDocument =
-                documentRepository.save(document);
+                documentRepository.save(
+                        document
+                );
 
 
-        // ---------------------------------------------------------
-        // STEP 8: Create DocumentChunk entities.
-        // ---------------------------------------------------------
+        // =========================================================
+        // STEP 8: Create chunks + embeddings.
+        // =========================================================
+
         List<DocumentChunk> documentChunks =
                 new ArrayList<>();
 
 
-        for (int i = 0; i < chunks.size(); i++) {
+        for (int i = 0;
+             i < chunks.size();
+             i++) {
 
-            String chunkText = chunks.get(i);
+            String chunkText =
+                    chunks.get(i);
 
 
-            // -----------------------------------------------------
-            // STEP 9: Generate Gemini embedding for this chunk.
-            // -----------------------------------------------------
             float[] embedding;
 
             try {
 
                 embedding =
-                        embeddingService.generateEmbedding(chunkText);
+                        embeddingService
+                                .generateEmbedding(
+                                        chunkText
+                                );
 
             } catch (RuntimeException exception) {
 
                 log.error(
-                        "Failed to generate embedding for chunk {} of document {} after retry attempts",
+                        "Embedding generation failed for chunk {}",
                         i,
-                        savedDocument.getId(),
                         exception
                 );
 
@@ -240,56 +248,64 @@ public class DocumentServiceImpl implements DocumentService {
             }
 
 
-            // -----------------------------------------------------
-            // STEP 10: Create DocumentChunk entity.
-            // -----------------------------------------------------
             DocumentChunk documentChunk =
                     new DocumentChunk();
 
-            documentChunk.setDocument(savedDocument);
-            documentChunk.setChunkIndex(i);
-            documentChunk.setContent(chunkText);
-            documentChunk.setEmbedding(embedding);
+            documentChunk.setDocument(
+                    savedDocument
+            );
 
-            documentChunks.add(documentChunk);
+            documentChunk.setChunkIndex(
+                    i
+            );
 
+            documentChunk.setContent(
+                    chunkText
+            );
 
-            log.info(
-                    "Generated embedding for chunk {} of document {}",
-                    i,
-                    savedDocument.getId()
+            documentChunk.setEmbedding(
+                    embedding
+            );
+
+            documentChunks.add(
+                    documentChunk
             );
         }
 
 
-        // ---------------------------------------------------------
-        // STEP 11: Persist chunks + embeddings.
-        // ---------------------------------------------------------
-        documentChunkRepository.saveAll(documentChunks);
+        // =========================================================
+        // STEP 9: Save chunks.
+        // =========================================================
 
-        log.info(
-                "Persisted {} chunks with embeddings for document id: {}",
-                documentChunks.size(),
-                savedDocument.getId()
+        documentChunkRepository.saveAll(
+                documentChunks
         );
 
 
-        // ---------------------------------------------------------
-        // STEP 12: Mark document as completed.
-        // ---------------------------------------------------------
-        savedDocument.setStatus(DocumentStatus.COMPLETED);
+        // =========================================================
+        // STEP 10: Mark document completed.
+        // =========================================================
 
-        documentRepository.save(savedDocument);
+        savedDocument.setStatus(
+                DocumentStatus.COMPLETED
+        );
 
-        log.info(
-                "Document {} processing completed successfully",
-                savedDocument.getId()
+        documentRepository.save(
+                savedDocument
         );
 
 
-        // ---------------------------------------------------------
-        // STEP 13: Return upload response.
-        // ---------------------------------------------------------
+        log.info(
+                "Document {} completed with {} chunks",
+                savedDocument.getId(),
+                documentChunks.size()
+        );
+
+
+        // =========================================================
+        // STEP 11: Return response.
+        // =========================================================
+
         return new DocumentUploadResponse(
                 savedDocument.getId(),
                 savedDocument.getFilename(),
@@ -298,9 +314,10 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
 
-    // -------------------------------------------------------------
-    // Calculates SHA-256 hash of the uploaded PDF.
-    // -------------------------------------------------------------
+    // =============================================================
+    // SHA-256
+    // =============================================================
+
     private String calculateSha256(
             MultipartFile file
     ) throws IOException {
@@ -308,16 +325,20 @@ public class DocumentServiceImpl implements DocumentService {
         try {
 
             MessageDigest digest =
-                    MessageDigest.getInstance("SHA-256");
+                    MessageDigest.getInstance(
+                            "SHA-256"
+                    );
 
             byte[] hash =
-                    digest.digest(file.getBytes());
+                    digest.digest(
+                            file.getBytes()
+                    );
 
-            return HexFormat.of().formatHex(hash);
+            return HexFormat.of()
+                    .formatHex(hash);
 
         } catch (NoSuchAlgorithmException exception) {
 
-            // SHA-256 is guaranteed to exist in standard Java.
             throw new IllegalStateException(
                     "SHA-256 algorithm is not available.",
                     exception
@@ -326,10 +347,10 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
 
-    // -------------------------------------------------------------
-    // Validates that the uploaded file exists, is not empty,
-    // and has a PDF content type.
-    // -------------------------------------------------------------
+    // =============================================================
+    // PDF validation
+    // =============================================================
+
     private void validatePdf(
             MultipartFile file
     ) {
@@ -341,13 +362,47 @@ public class DocumentServiceImpl implements DocumentService {
             );
         }
 
-        String contentType =
-                file.getContentType();
+        String filename =
+                file.getOriginalFilename();
 
-        if (!"application/pdf".equalsIgnoreCase(contentType)) {
+        if (filename == null ||
+                !filename.toLowerCase().endsWith(".pdf")) {
 
             throw new InvalidDocumentException(
                     "Only PDF files are allowed."
+            );
+        }
+
+        try {
+
+            byte[] fileBytes = file.getBytes();
+
+            if (fileBytes.length < 5) {
+
+                throw new InvalidDocumentException(
+                        "Invalid PDF file."
+                );
+            }
+
+            String pdfHeader =
+                    new String(
+                            fileBytes,
+                            0,
+                            5,
+                            java.nio.charset.StandardCharsets.US_ASCII
+                    );
+
+            if (!"%PDF-".equals(pdfHeader)) {
+
+                throw new InvalidDocumentException(
+                        "Invalid PDF file."
+                );
+            }
+
+        } catch (IOException exception) {
+
+            throw new InvalidDocumentException(
+                    "Unable to read the uploaded PDF."
             );
         }
     }

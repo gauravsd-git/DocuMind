@@ -10,12 +10,15 @@ import java.io.IOException;
 @Service
 public class TikaTextExtractionService {
 
-    private final Tika tika = new Tika();
+    private final Tika tika =
+            new Tika();
 
-    // Extracts raw text from the uploaded PDF.
-    public String extractText(MultipartFile file)
-            throws IOException, TikaException {
+    public String extractText(
+            MultipartFile file
+    ) throws IOException, TikaException {
 
-        return tika.parseToString(file.getInputStream());
+        return tika.parseToString(
+                file.getInputStream()
+        );
     }
 }

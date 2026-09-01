@@ -28,20 +28,40 @@ public class QueryServiceImpl implements QueryService {
             String question
     ) {
 
+        // ---------------------------------------------------------
+        // STEP 1: Validate authenticated user.
+        // ---------------------------------------------------------
+
         if (userId == null) {
+
             throw new IllegalArgumentException(
-                    "User id must not be null."
+                    "Authenticated user id must not be null."
             );
         }
 
+
+        // ---------------------------------------------------------
+        // STEP 2: Validate question.
+        // ---------------------------------------------------------
+
         if (question == null || question.isBlank()) {
+
             throw new IllegalArgumentException(
                     "Question must not be empty."
             );
         }
 
-        // Retrieve the most relevant chunks belonging
-        // only to the requested user.
+
+        // ---------------------------------------------------------
+        // STEP 3: Retrieve relevant chunks.
+        //
+        // IMPORTANT:
+        // userId comes from JWT authentication.
+        //
+        // Therefore retrieval can only search documents
+        // belonging to the authenticated user.
+        // ---------------------------------------------------------
+
         List<DocumentChunk> relevantChunks =
                 retrievalService.retrieve(
                         userId,
@@ -49,25 +69,38 @@ public class QueryServiceImpl implements QueryService {
                         DEFAULT_TOP_K
                 );
 
-        // Generate an answer using only the retrieved chunks.
+
+        // ---------------------------------------------------------
+        // STEP 4: Generate answer from retrieved context.
+        // ---------------------------------------------------------
+
         String answer =
                 generationService.generateAnswer(
                         question,
                         relevantChunks
                 );
 
-        /*
-         * Convert retrieved chunks into citation information.
-         */
+
+        // ---------------------------------------------------------
+        // STEP 5: Build citation/source information.
+        // ---------------------------------------------------------
+
         List<QuerySource> sources =
                 relevantChunks.stream()
-                        .map(chunk -> new QuerySource(
-                                chunk.getDocument().getId(),
-                                chunk.getDocument().getFilename(),
-                                chunk.getChunkIndex()
-                        ))
+                        .map(chunk ->
+                                new QuerySource(
+                                        chunk.getDocument().getId(),
+                                        chunk.getDocument().getFilename(),
+                                        chunk.getChunkIndex()
+                                )
+                        )
                         .distinct()
                         .toList();
+
+
+        // ---------------------------------------------------------
+        // STEP 6: Return answer + sources.
+        // ---------------------------------------------------------
 
         return new QueryResponse(
                 answer,
