@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -21,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
         name = "Documents",
         description = "Document upload and ingestion APIs"
 )
+@SecurityRequirement(name = "bearerAuth")
 public class DocumentController {
 
     private final DocumentService documentService;
@@ -47,7 +49,11 @@ public class DocumentController {
             ),
             @ApiResponse(
                     responseCode = "400",
-                    description = "Invalid, empty, or unsupported PDF file"
+                    description = "Invalid, empty, duplicate, oversized, or unsupported PDF file"
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Authentication required"
             ),
             @ApiResponse(
                     responseCode = "404",
