@@ -72,7 +72,7 @@ public class GenerationServiceImpl implements GenerationService {
             return geminiCircuitBreaker.executeSupplier(
                     () -> chatModel.call(prompt.toString())
             );
-        } catch (CallNotPermittedException ex) {
+        } catch (RuntimeException ex) {
             return fallbackResponse();
         }
     }

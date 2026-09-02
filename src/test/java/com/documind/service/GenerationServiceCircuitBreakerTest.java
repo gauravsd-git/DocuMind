@@ -50,12 +50,15 @@ class GenerationServiceCircuitBreakerTest {
 
         List<DocumentChunk> context = List.of(chunk);
 
+        String fallbackResponse =
+                "The AI service is temporarily unavailable. Please try again shortly.";
+
         // Act
         for (int i = 0; i < 5; i++) {
 
-            assertThrows(
-                    RuntimeException.class,
-                    () -> service.generateAnswer(
+            assertEquals(
+                    fallbackResponse,
+                    service.generateAnswer(
                             "What is this document about?",
                             context
                     )
@@ -72,18 +75,20 @@ class GenerationServiceCircuitBreakerTest {
         );
 
         // Circuit is OPEN, so Gemini should NOT be called again.
-        // Instead, the fallback response should be returned.
-        String fallbackResponse = service.generateAnswer(
-                "What is this document about?",
-                context
-        );
+        // The fallback response should be returned.
+        String responseAfterCircuitOpened =
+                service.generateAnswer(
+                        "What is this document about?",
+                        context
+                );
 
         assertEquals(
-                "The AI service is temporarily unavailable. Please try again shortly.",
-                fallbackResponse
+                fallbackResponse,
+                responseAfterCircuitOpened
         );
 
-        // Verify Gemini was called only during the 5 failed attempts.
+        // Gemini should have been called only during the
+        // five failed attempts.
         verify(chatModel, times(5))
                 .call(anyString());
     }
