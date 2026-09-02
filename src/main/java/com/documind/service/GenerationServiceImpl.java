@@ -1,17 +1,28 @@
 package com.documind.service;
 
 import com.documind.entity.DocumentChunk;
-import lombok.RequiredArgsConstructor;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.springframework.ai.chat.model.ChatModel;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 public class GenerationServiceImpl implements GenerationService {
 
+    private final CircuitBreaker geminiCircuitBreaker;
     private final ChatModel chatModel;
+
+    public GenerationServiceImpl(
+            ChatModel chatModel,
+            CircuitBreakerRegistry circuitBreakerRegistry
+    ) {
+        this.chatModel = chatModel;
+        this.geminiCircuitBreaker =
+                circuitBreakerRegistry.circuitBreaker("gemini");
+    }
 
     @Override
     public String generateAnswer(
@@ -57,6 +68,16 @@ public class GenerationServiceImpl implements GenerationService {
 
         prompt.append("\n\nANSWER:");
 
-        return chatModel.call(prompt.toString());
+        try {
+            return geminiCircuitBreaker.executeSupplier(
+                    () -> chatModel.call(prompt.toString())
+            );
+        } catch (CallNotPermittedException ex) {
+            return fallbackResponse();
+        }
+    }
+
+    private String fallbackResponse() {
+        return "The AI service is temporarily unavailable. Please try again shortly.";
     }
 }
