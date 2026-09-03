@@ -3,6 +3,7 @@ package com.documind.security;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -29,34 +30,48 @@ public class SecurityConfig {
     ) throws Exception {
 
         http
+                // Disable CSRF because we use stateless JWT authentication
                 .csrf(csrf -> csrf.disable())
 
+                // Enable CORS for the React frontend
                 .cors(cors -> cors.configurationSource(
                         corsConfigurationSource()
                 ))
 
+                // JWT authentication is stateless
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(
                                 SessionCreationPolicy.STATELESS
                         )
                 )
 
+                // Endpoint authorization
                 .authorizeHttpRequests(auth -> auth
 
+                        // Public authentication endpoints
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/login"
                         ).permitAll()
 
+                        // Allow CORS preflight requests
+                        .requestMatchers(
+                                HttpMethod.OPTIONS,
+                                "/**"
+                        ).permitAll()
+
+                        // Public Swagger/OpenAPI endpoints
                         .requestMatchers(
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"
                         ).permitAll()
 
+                        // Everything else requires JWT authentication
                         .anyRequest().authenticated()
                 )
 
+                // Run JWT filter before Spring's username/password filter
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
@@ -70,8 +85,9 @@ public class SecurityConfig {
 
         CorsConfiguration configuration = new CorsConfiguration();
 
+        // Deployed React frontend
         configuration.setAllowedOrigins(
-                List.of("http://localhost:5173")
+                List.of("https://docu-mind-blond.vercel.app")
         );
 
         configuration.setAllowedMethods(
@@ -84,11 +100,16 @@ public class SecurityConfig {
                 )
         );
 
+        // Authorization header is required for JWT
         configuration.setAllowedHeaders(
-                List.of("*")
+                List.of(
+                        "Authorization",
+                        "Content-Type"
+                )
         );
 
-        configuration.setAllowCredentials(true);
+        // We use Authorization headers, not cookies
+        configuration.setAllowCredentials(false);
 
         UrlBasedCorsConfigurationSource source =
                 new UrlBasedCorsConfigurationSource();
